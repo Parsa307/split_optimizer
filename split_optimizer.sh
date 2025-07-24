@@ -7,17 +7,38 @@ print_help() {
   echo
   echo "Usage: $0 your_app.<ext>"
   echo
-  echo "Reads filters from $CONFIG_FILE:"
-  echo "  - LANG: en"
-  echo "  - DPI: xxhdpi"
-  echo "  - ARCH: arm64_v8a"
+
+  if [[ ! -f "$CONFIG_FILE" ]]; then
+    echo "⚠️  Config file '$CONFIG_FILE' not found."
+  else
+    # Validate config keys
+    bad_keys=()
+    for key in LANG DPI ARCH; do
+      value=$(grep "^$key=" "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')
+      if [[ -z "$value" ]]; then
+        bad_keys+=("$key")
+      fi
+    done
+
+    if [[ ${#bad_keys[@]} -gt 0 ]]; then
+      echo "⚠️  Invalid config: Missing or empty keys in $CONFIG_FILE: ${bad_keys[*]}"
+    else
+      echo "Reads filters from $CONFIG_FILE:"
+      grep -E '^(LANG|DPI|ARCH)=' "$CONFIG_FILE" | while IFS= read -r line; do
+        key="${line%%=*}"
+        value="${line#*=}"
+        echo "  - $key: $value"
+      done
+    fi
+  fi
+
   echo
   echo "Output file: your_app_optimized.<ext>"
   echo
   exit 0
 }
 
-# === Check tools ===
+# === Check required tools ===
 for dep in unzip zip; do
   if ! command -v "$dep" &>/dev/null; then
     echo "❌ Error: Required command '$dep' not found. Please install it."
@@ -25,7 +46,7 @@ for dep in unzip zip; do
   fi
 done
 
-# === Help flag ===
+# === Help flag check ===
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then
   print_help
 fi
@@ -45,9 +66,16 @@ fi
 
 # Parse config
 IFS=',' read -ra LANGS <<< "$(grep '^LANG=' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')"
-IFS=',' read -ra DPIS <<< "$(grep '^DPI=' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')"
+IFS=',' read -ra DPIS  <<< "$(grep '^DPI=' "$CONFIG_FILE"  | cut -d= -f2 | tr -d ' ')"
 IFS=',' read -ra ARCHS <<< "$(grep '^ARCH=' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')"
 
+# Validate config content
+if [[ -z "${LANGS[*]}" || -z "${DPIS[*]}" || -z "${ARCHS[*]}" ]]; then
+  echo "❌ Error: Config file is missing required values (LANG, DPI, ARCH)."
+  exit 1
+fi
+
+# === Input setup ===
 INPUT="$1"
 EXT="${INPUT##*.}"
 BASENAME="${INPUT%.*}"
@@ -62,6 +90,7 @@ echo "[*] Filtering APK splits and cleaning up ..."
 for entry in "$TMPDIR"/*; do
   name=$(basename "$entry")
 
+  # Remove directories
   if [[ -d "$entry" ]]; then
     echo "  Removing directory: $name"
     rm -rf "$entry"
@@ -69,9 +98,7 @@ for entry in "$TMPDIR"/*; do
   fi
 
   keep=false
-  if [[ "$name" == "base.apk" ]]; then
-    keep=true
-  fi
+  [[ "$name" == "base.apk" ]] && keep=true
 
   for lang in "${LANGS[@]}"; do
     [[ "$name" == "split_config.${lang}.apk" ]] && keep=true
