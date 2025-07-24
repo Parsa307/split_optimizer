@@ -1,33 +1,23 @@
 #!/bin/bash
 
-# === Configurable filters ===
-LANG="en"         # Target language
-DPI="xxhdpi"      # Target screen density
-ARCH="arm64_v8a"  # Target architecture
+CONFIG_FILE="./split_optimizer.conf"
 
 print_help() {
   echo "📦 Optimize APK bundle (.apks, .apkm, .zip, etc.)"
   echo
   echo "Usage: $0 your_app.<ext>"
   echo
-  echo "Keeps only:"
-  echo "  - base.apk"
-  echo "  - split_config.${LANG}.apk"
-  echo "  - split_config.${DPI}.apk"
-  echo "  - split_config.${ARCH}.apk"
+  echo "Reads filters from $CONFIG_FILE:"
+  echo "  - LANG: en,fr"
+  echo "  - DPI: xxhdpi,xhdpi"
+  echo "  - ARCH: arm64_v8a,armeabi_v7a"
   echo
   echo "Output file: your_app_optimized.<ext>"
   echo
-  echo "Note:"
-  echo "  This script works on ZIP-format archives containing APK splits."
-  echo "  It might work with other extensions if the file format is ZIP-based"
-  echo "  and the APK split grouping is consistent."
-  echo
-  echo "Run with -h or --help to show this message."
   exit 0
 }
 
-# === Dependency Check ===
+# === Check tools ===
 for dep in unzip zip; do
   if ! command -v "$dep" &>/dev/null; then
     echo "❌ Error: Required command '$dep' not found. Please install it."
@@ -35,29 +25,30 @@ for dep in unzip zip; do
   fi
 done
 
-# === Usage Check ===
+# === Help flag ===
+if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+  print_help
+fi
+
+# === Usage check ===
 if [[ $# -eq 0 || -z "$1" ]]; then
   echo "❌ Invalid usage: Missing input file."
   echo "Run with -h or --help for usage information."
   exit 1
 fi
 
-INPUT="$1"
-
-# === Help flag ===
-case "$INPUT" in
-  -h|--help)
-    print_help
-    ;;
-esac
-
-# === File Existence Check ===
-if [[ ! -f "$INPUT" ]]; then
-  echo "❌ Error: File '$INPUT' not found."
+# === Load config ===
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  echo "❌ Error: Config file '$CONFIG_FILE' not found."
   exit 1
 fi
 
-# === Extract File Info ===
+# Parse config
+IFS=',' read -ra LANGS <<< "$(grep '^LANG=' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')"
+IFS=',' read -ra DPIS <<< "$(grep '^DPI=' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')"
+IFS=',' read -ra ARCHS <<< "$(grep '^ARCH=' "$CONFIG_FILE" | cut -d= -f2 | tr -d ' ')"
+
+INPUT="$1"
 EXT="${INPUT##*.}"
 BASENAME="${INPUT%.*}"
 TMPDIR=$(mktemp -d)
@@ -66,7 +57,6 @@ trap 'rm -rf "$TMPDIR"' EXIT
 echo "[*] Extracting $INPUT to $TMPDIR ..."
 unzip -q "$INPUT" -d "$TMPDIR" || { echo "❌ Failed to unzip $INPUT"; exit 1; }
 
-# === Filtering Files & Removing Directories ===
 echo "[*] Filtering APK splits and cleaning up ..."
 
 for entry in "$TMPDIR"/*; do
@@ -75,15 +65,34 @@ for entry in "$TMPDIR"/*; do
   if [[ -d "$entry" ]]; then
     echo "  Removing directory: $name"
     rm -rf "$entry"
-  elif [[ "$name" =~ ^(base\.apk|split_config\.${LANG}\.apk|split_config\.${DPI}\.apk|split_config\.${ARCH}\.apk)$ ]]; then
+    continue
+  fi
+
+  keep=false
+  if [[ "$name" == "base.apk" ]]; then
+    keep=true
+  fi
+
+  for lang in "${LANGS[@]}"; do
+    [[ "$name" == "split_config.${lang}.apk" ]] && keep=true
+  done
+
+  for dpi in "${DPIS[@]}"; do
+    [[ "$name" == "split_config.${dpi}.apk" ]] && keep=true
+  done
+
+  for arch in "${ARCHS[@]}"; do
+    [[ "$name" == "split_config.${arch}.apk" ]] && keep=true
+  done
+
+  if [[ "$keep" == true ]]; then
     echo "  Keeping $name"
   else
-    echo "  Removing file: $name"
+    echo "  Removing $name"
     rm -f "$entry"
   fi
 done
 
-# === Output File Creation ===
 OUTPUT="${BASENAME}_optimized.${EXT}"
 echo "[*] Creating optimized APK bundle: $OUTPUT"
 
