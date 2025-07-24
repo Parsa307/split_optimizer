@@ -8,9 +8,9 @@ print_help() {
   echo "Usage: $0 your_app.<ext>"
   echo
   echo "Reads filters from $CONFIG_FILE:"
-  echo "  - LANG: en,fr"
-  echo "  - DPI: xxhdpi,xhdpi"
-  echo "  - ARCH: arm64_v8a,armeabi_v7a"
+  echo "  - LANG: en"
+  echo "  - DPI: xxhdpi"
+  echo "  - ARCH: arm64_v8a"
   echo
   echo "Output file: your_app_optimized.<ext>"
   echo
