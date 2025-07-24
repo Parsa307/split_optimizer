@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CONFIG_FILE="./split_optimizer.conf"
+CONFIG_FILE="$HOME/.config/split_optimizer/split_optimizer.conf"
 
 print_help() {
   echo "📦 Optimize APK bundle (.apks, .apkm, .zip, etc.)"
